@@ -130,7 +130,9 @@ function App(){
   const liveRows=editRows.filter(r=>r.tp!=="삭제");
   const hasOver=liveRows.some(r=>calc(r).st==="초과");
   const allFilled=liveRows.length>0&&liveRows.every(r=>calc(r).ok);
-  const allOk=allFilled&&!hasOver;
+  const dupNames=(()=>{const names=liveRows.filter(r=>r.nm).map(r=>r.nm.trim());const seen=new Set();const dups=new Set();names.forEach(n=>{if(seen.has(n))dups.add(n);seen.add(n);});return dups;})();
+  const hasDup=dupNames.size>0;
+  const allOk=allFilled&&!hasOver&&!hasDup;
 
   const updEdit=(id,k,v)=>setEditRows(prev=>prev.map(r=>{
     if(r.id!==id)return r;
@@ -331,7 +333,8 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
       const rc=calc(row);
       const isDel=row.tp==="삭제";
       const isOver=rc.st==="초과"&&!isDel;
-      const bg=isDel?"#f9f9f9":isOver?"#fdf5f5":i%2===0?"#fff":"#f8fafc";
+      const isDup=!isDel&&row.nm&&dupNames.has(row.nm.trim());
+      const bg=isDel?"#f9f9f9":isOver?"#fdf5f5":isDup?"#fef9e7":i%2===0?"#fff":"#f8fafc";
       return(
         <tr key={row.id} style={{background:bg,textDecoration:isDel?"line-through":"none",color:isDel?"#aaa":"#222"}}>
           {isPartial&&<TD><select value={row.tp} onChange={e=>updEdit(row.id,"tp",e.target.value)} style={{padding:"2px",border:"1px solid #ccd",borderRadius:2,fontSize:11,width:52,fontWeight:600,color:row.tp==="삭제"?"#c0392b":row.tp==="변경"?"#1a4b8c":"#27ae60"}}>{["삭제","변경","추가"].map(o=><option key={o}>{o}</option>)}</select></TD>}
@@ -340,7 +343,7 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
           <TD><Sel value={row.p} options={row.c?gP(row.f,row.c):[]} onChange={v=>updEdit(row.id,"p",v)} ph="과정" w="100px" disabled={isDel}/></TD>
           <TD><Sel value={row.d} options={row.p?gD(row.f,row.c,row.p):[]} onChange={v=>updEdit(row.id,"d",v)} ph="대상" w="66px" disabled={isDel}/></TD>
           <TD style={{fontWeight:700,color:"#1a4b8c",fontSize:11,background:isDel?"#f9f9f9":"#eef3fa"}}>{isDel?"-":rc.std!==null?rc.std:"-"}</TD>
-          <TD><Inp value={row.nm} onChange={v=>updEdit(row.id,"nm",v)} ph="과목명" w="90px" disabled={isDel}/></TD>
+          <TD style={{background:isDup?"#fef3c7":"transparent"}}><Inp value={row.nm} onChange={v=>updEdit(row.id,"nm",v)} ph="과목명" w="90px" disabled={isDel} bc={isDup?"#e67e22":undefined} color={isDup?"#e67e22":undefined}/></TD>
           <TD><Inp value={row.cap} onChange={v=>updEdit(row.id,"cap",v)} ph="0" tp="number" w="42px" disabled={isDel}/></TD>
           <TD><Inp value={row.mpd} onChange={v=>updEdit(row.id,"mpd",v)} ph="분" tp="number" w="50px" disabled={isDel}/></TD>
           <TD><Inp value={row.dpw} onChange={v=>updEdit(row.id,"dpw",v)} ph="회" tp="number" w="40px" disabled={isDel}/></TD>
@@ -429,6 +432,7 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
         </div>
 
         {hasOver&&<div style={S.errorBox}>⚠️ 기준단가 초과 항목이 {overCount}건 있습니다. 교습비를 조정해야 다음 단계로 진행할 수 있습니다.</div>}
+        {hasDup&&<div style={{background:"#fef9e7",border:"1px solid #f0c040",borderRadius:6,padding:"14px 18px",color:"#e67e22",fontSize:14,fontWeight:600,marginTop:10}}>⚠️ 동일한 교습과목명이 있습니다: {[...dupNames].map(n=>`"${n}"`).join(", ")}. 교습과목명은 중복될 수 없습니다.</div>}
         {allOk&&<div style={S.successBox}>✅ 모든 교습과목의 분당단가가 기준 이내입니다. 다음 단계로 진행할 수 있습니다.</div>}
       </div>
     );
