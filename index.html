@@ -15,7 +15,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useCallback } = React;
+const { useState, useCallback, useRef } = React;
 
 // ── 조정기준 단가 DB ──
 const RATES = [
@@ -64,13 +64,30 @@ const OFFICES = [
   {id:"jungbu",name:"서울특별시중부교육지원청",on:false},
 ];
 
-const gF=()=>[...new Set(RATES.map(r=>r.f))];
-const gC=(f)=>[...new Set(RATES.filter(r=>r.f===f).map(r=>r.c))];
-const gP=(f,c)=>[...new Set(RATES.filter(r=>r.f===f&&r.c===c).map(r=>r.p))];
+// ── 교습과정 유형 정의 ──
+// 학원/교습소가 등록한 과정 유형에 따라 선택 가능한 분야/계열/교습과정이 결정됨
+const COURSE_TYPES = {
+  "보습":{label:"보습",f:"입시·검정 및 보습",c:"보통교과",allowedP:["보습"]},
+  "보습·논술":{label:"보습·논술",f:"입시·검정 및 보습",c:"보통교과",allowedP:["보습","논술"]},
+  "입시":{label:"입시",f:"입시·검정 및 보습",c:"보통교과",allowedP:["입시"]},
+  "진학상담·지도":{label:"진학상담·지도",f:"입시·검정 및 보습",c:"보통교과",allowedP:["진학상담·지도"]},
+  "정보":{label:"정보",f:"정보",c:"정보",allowedP:["정보"]},
+  "외국어":{label:"외국어",f:"국제화",c:"외국어",allowedP:["외국어"]},
+  "음악":{label:"음악",f:"예능",c:"예능",allowedP:["음악"]},
+  "미술":{label:"미술",f:"예능",c:"예능",allowedP:["미술"]},
+  "무용":{label:"무용",f:"예능",c:"예능",allowedP:["무용"]},
+  "실용음악":{label:"실용음악",f:"기타",c:"기타",allowedP:["실용음악"]},
+  "컴퓨터·코딩":{label:"컴퓨터·코딩",f:"기타",c:"기타",allowedP:["컴퓨터·코딩·오피스·로봇"]},
+  "만화·서예·공예":{label:"만화·서예·공예",f:"기타",c:"기타",allowedP:["만화·서예·공예·펜글씨"]},
+};
+
 const gD=(f,c,p)=>[...new Set(RATES.filter(r=>r.f===f&&r.c===c&&r.p===p).map(r=>r.d))];
 const gR=(f,c,p,d)=>{const x=RATES.find(r=>r.f===f&&r.c===c&&r.p===p&&r.d===d);return x?x.r:null;};
 
-const blankRow=(id)=>({id,tp:"추가",f:"",c:"",p:"",d:"",nm:"",cap:"",mpd:"",dpw:"",wpm:"4.2",fee:""});
+const blankRow=(id,ct)=>{
+  const def=ct?COURSE_TYPES[ct]:null;
+  return{id,tp:"추가",f:def?.f||"",c:def?.c||"",p:def?.allowedP?.length===1?def.allowedP[0]:"",d:"",nm:"",cap:"",mpd:"",dpw:"",wpm:"4.2",fee:""};
+};
 
 const calc=(row)=>{
   const m=+row.mpd||0,d=+row.dpw||0,w=+row.wpm||0,fe=+row.fee||0;
@@ -84,34 +101,117 @@ const calc=(row)=>{
 
 const fmt=n=>Number(n).toLocaleString("ko-KR");
 
-// ── 샘플 기존 교습과정 ──
-const EXISTING_A=[
-  {id:101,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어1",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"295000"},
-  {id:102,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어1",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"270000"},
-  {id:103,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어2",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"195000"},
-  {id:104,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어2",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"180000"},
+// ── 학원 샘플 데이터 (순환) ──
+const ACADEMY_SAMPLES = [
+  {
+    info:{ownerName:"김영희",birth:"1975-03-15",addr:"서울특별시 강서구 화곡로 123",ph:"010-1234-5678",nm:"강서보습학원",reg:"1234",loc:"서울특별시 강서구 화곡로 123, 2층 201호",tel:"02-2345-6789"},
+    ct:"보습",
+    existing:[
+      {id:101,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"295000"},
+      {id:102,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"270000"},
+      {id:103,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"195000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"310000"},
+      {id:202,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"285000"},
+      {id:203,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"207000"},
+      {id:204,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등수학",cap:"8",mpd:"90",dpw:"2",wpm:"4.2",fee:"140000"},
+      {id:205,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등영어",cap:"8",mpd:"90",dpw:"3",wpm:"4.2",fee:"210000"},
+    ],
+  },
+  {
+    info:{ownerName:"박철수",birth:"1982-08-10",addr:"서울특별시 양천구 목동서로 45",ph:"010-9876-5432",nm:"양천미술학원",reg:"4321",loc:"서울특별시 양천구 목동서로 45, 3층",tel:"02-2650-1234"},
+    ct:"미술",
+    existing:[
+      {id:101,f:"예능",c:"예능",p:"미술",d:"일반",nm:"초등미술A",cap:"12",mpd:"90",dpw:"2",wpm:"4.2",fee:"130000"},
+      {id:102,f:"예능",c:"예능",p:"미술",d:"일반",nm:"초등미술B",cap:"12",mpd:"90",dpw:"3",wpm:"4.2",fee:"195000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"예능",c:"예능",p:"미술",d:"일반",nm:"초등미술A",cap:"12",mpd:"90",dpw:"2",wpm:"4.2",fee:"139000"},
+      {id:202,tp:"변경",f:"예능",c:"예능",p:"미술",d:"일반",nm:"초등미술B",cap:"12",mpd:"90",dpw:"3",wpm:"4.2",fee:"205000"},
+      {id:203,tp:"추가",f:"예능",c:"예능",p:"미술",d:"입시",nm:"입시미술",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"320000"},
+    ],
+  },
+  {
+    info:{ownerName:"이민정",birth:"1979-12-01",addr:"서울특별시 강서구 공항대로 200",ph:"010-5555-1234",nm:"강서영어학원",reg:"567",loc:"서울특별시 강서구 공항대로 200, 5층 501호",tel:"02-3456-7890"},
+    ct:"외국어",
+    existing:[
+      {id:101,f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"성인영어회화",cap:"10",mpd:"90",dpw:"3",wpm:"4.2",fee:"285000"},
+      {id:102,f:"국제화",c:"외국어",p:"외국어",d:"유아",nm:"유아영어",cap:"8",mpd:"60",dpw:"3",wpm:"4.2",fee:"148000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"성인영어회화",cap:"10",mpd:"90",dpw:"3",wpm:"4.2",fee:"320000"},
+      {id:202,tp:"변경",f:"국제화",c:"외국어",p:"외국어",d:"유아",nm:"유아영어",cap:"8",mpd:"60",dpw:"3",wpm:"4.2",fee:"149000"},
+      {id:203,tp:"추가",f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"중등영어",cap:"10",mpd:"120",dpw:"2",wpm:"4.2",fee:"250000"},
+    ],
+  },
+  {
+    info:{ownerName:"정수진",birth:"1985-04-22",addr:"서울특별시 양천구 신정로 77",ph:"010-3333-7777",nm:"목동보습·논술학원",reg:"2468",loc:"서울특별시 양천구 신정로 77, 2층",tel:"02-2690-5678"},
+    ct:"보습·논술",
+    existing:[
+      {id:101,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등국어",cap:"10",mpd:"120",dpw:"2",wpm:"4.2",fee:"195000"},
+      {id:102,f:"입시·검정 및 보습",c:"보통교과",p:"논술",d:"전체",nm:"논술심화",cap:"6",mpd:"120",dpw:"1",wpm:"4.2",fee:"125000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등국어",cap:"10",mpd:"120",dpw:"2",wpm:"4.2",fee:"206000"},
+      {id:202,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"논술",d:"전체",nm:"논술심화",cap:"6",mpd:"120",dpw:"1",wpm:"4.2",fee:"127000"},
+      {id:203,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등국어",cap:"8",mpd:"90",dpw:"3",wpm:"4.2",fee:"255000"},
+      {id:204,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"논술",d:"전체",nm:"논술기초",cap:"6",mpd:"90",dpw:"1",wpm:"4.2",fee:"113000"},
+    ],
+  },
+  {
+    info:{ownerName:"한지윤",birth:"1988-06-15",addr:"서울특별시 강서구 등촌로 55",ph:"010-8888-2222",nm:"화곡음악학원",reg:"89",loc:"서울특별시 강서구 등촌로 55, 지하1층",tel:"02-2659-3456"},
+    ct:"음악",
+    existing:[
+      {id:101,f:"예능",c:"예능",p:"음악",d:"일반",nm:"피아노초급",cap:"5",mpd:"60",dpw:"2",wpm:"4.2",fee:"99000"},
+      {id:102,f:"예능",c:"예능",p:"음악",d:"일반",nm:"피아노중급",cap:"5",mpd:"60",dpw:"3",wpm:"4.2",fee:"149000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"예능",c:"예능",p:"음악",d:"일반",nm:"피아노초급",cap:"5",mpd:"60",dpw:"2",wpm:"4.2",fee:"105000"},
+      {id:202,tp:"변경",f:"예능",c:"예능",p:"음악",d:"일반",nm:"피아노중급",cap:"5",mpd:"60",dpw:"3",wpm:"4.2",fee:"155000"},
+      {id:203,tp:"추가",f:"예능",c:"예능",p:"음악",d:"입시",nm:"입시피아노",cap:"3",mpd:"90",dpw:"3",wpm:"4.2",fee:"355000"},
+    ],
+  },
 ];
-const NEW_A=[
-  {id:201,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어1",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"310000"},
-  {id:202,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어1",cap:"8",mpd:"120",dpw:"3",wpm:"4.2",fee:"285000"},
-  {id:203,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등영어2",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"207000"},
-  {id:204,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어2",cap:"8",mpd:"120",dpw:"2",wpm:"4.2",fee:"190000"},
-  {id:205,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어3",cap:"8",mpd:"90",dpw:"2",wpm:"4.2",fee:"140000"},
-  {id:206,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어4",cap:"8",mpd:"90",dpw:"3",wpm:"4.2",fee:"210000"},
-  {id:207,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등영어5",cap:"8",mpd:"90",dpw:"1",wpm:"4.2",fee:"70000"},
+
+const TUTORING_SAMPLES = [
+  {
+    info:{ownerName:"이정수",birth:"1980-07-22",email:"jslee@example.com",nm:"수학의정석교습소",reg:"56",loc:"서울특별시 양천구 목동동로 45, 3층 302호",tel:"02-6789-0123",subj:"수학"},
+    ct:"보습",
+    existing:[
+      {id:101,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"1",mpd:"120",dpw:"3",wpm:"4.2",fee:"215000"},
+      {id:102,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등수학",cap:"1",mpd:"120",dpw:"2",wpm:"4.2",fee:"220000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"1",mpd:"120",dpw:"3",wpm:"4.2",fee:"230000"},
+      {id:202,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등수학",cap:"1",mpd:"120",dpw:"2",wpm:"4.2",fee:"228000"},
+      {id:203,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등수학",cap:"1",mpd:"60",dpw:"2",wpm:"4.2",fee:"90000"},
+    ],
+  },
+  {
+    info:{ownerName:"최은지",birth:"1990-03-18",email:"choiej@example.com",nm:"은지영어교습소",reg:"123",loc:"서울특별시 강서구 화곡로 88, 2층 202호",tel:"02-2698-4567",subj:"영어"},
+    ct:"외국어",
+    existing:[
+      {id:101,f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"성인토익",cap:"1",mpd:"90",dpw:"3",wpm:"4.2",fee:"280000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"성인토익",cap:"1",mpd:"90",dpw:"3",wpm:"4.2",fee:"320000"},
+      {id:202,tp:"추가",f:"국제화",c:"외국어",p:"외국어",d:"내국인",nm:"성인영어회화",cap:"1",mpd:"60",dpw:"2",wpm:"4.2",fee:"125000"},
+    ],
+  },
+  {
+    info:{ownerName:"김서연",birth:"1992-11-05",email:"ksytart@example.com",nm:"서연미술교습소",reg:"789",loc:"서울특별시 양천구 신월로 30, 1층",tel:"02-2691-8901",subj:"미술"},
+    ct:"미술",
+    existing:[
+      {id:101,f:"예능",c:"예능",p:"미술",d:"일반",nm:"아동미술",cap:"1",mpd:"90",dpw:"2",wpm:"4.2",fee:"138000"},
+    ],
+    editRows:[
+      {id:201,tp:"변경",f:"예능",c:"예능",p:"미술",d:"일반",nm:"아동미술",cap:"1",mpd:"90",dpw:"2",wpm:"4.2",fee:"139000"},
+      {id:202,tp:"추가",f:"예능",c:"예능",p:"미술",d:"일반",nm:"수채화반",cap:"1",mpd:"120",dpw:"1",wpm:"4.2",fee:"92000"},
+      {id:203,tp:"추가",f:"예능",c:"예능",p:"미술",d:"입시",nm:"입시미술",cap:"1",mpd:"120",dpw:"3",wpm:"4.2",fee:"320000"},
+    ],
+  },
 ];
-const EXISTING_T=[
-  {id:101,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"1",mpd:"120",dpw:"3",wpm:"4.2",fee:"215000"},
-  {id:102,f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등수학",cap:"1",mpd:"120",dpw:"2",wpm:"4.2",fee:"220000"},
-];
-const NEW_T=[
-  {id:201,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"중등",nm:"중등수학",cap:"1",mpd:"120",dpw:"3",wpm:"4.2",fee:"230000"},
-  {id:202,tp:"변경",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"고등",nm:"고등수학",cap:"1",mpd:"120",dpw:"2",wpm:"4.2",fee:"228000"},
-  {id:203,tp:"추가",f:"입시·검정 및 보습",c:"보통교과",p:"보습",d:"초등",nm:"초등수학",cap:"1",mpd:"60",dpw:"2",wpm:"4.2",fee:"90000"},
-  {id:204,tp:"추가",f:"예능",c:"예능",p:"미술",d:"일반",nm:"창의미술",cap:"1",mpd:"90",dpw:"2",wpm:"4.2",fee:"140000"},
-];
-const INFO_A={ownerName:"김영희",birth:"1975-03-15",addr:"서울특별시 강서구 화곡로 123",ph:"010-1234-5678",nm:"강서영어학원",reg:"제2020-강서-1234호",loc:"서울특별시 강서구 화곡로 123, 2층 201호",tel:"02-2345-6789"};
-const INFO_T={ownerName:"이정수",birth:"1980-07-22",email:"jslee@example.com",nm:"수학의정석교습소",reg:"제2021-강서-5678호",loc:"서울특별시 양천구 목동동로 45, 3층 302호",tel:"02-6789-0123",subj:"수학"};
 
 const STEPS=["기관 및 유형 선택","기본정보 입력","변경사유 선택","교습비 내역서","확인 및 제출","서류 출력"];
 
@@ -120,13 +220,16 @@ function App(){
   const [office,setOffice]=useState("");
   const [type,setType]=useState("");
   const [info,setInfo]=useState({});
+  const [courseType,setCourseType]=useState("");
   const [mode,setMode]=useState("일부수정");
   const [existingRows,setExistingRows]=useState([]);
   const [editRows,setEditRows]=useState([blankRow(1)]);
   const [signed,setSigned]=useState(false);
   const [submitted,setSubmitted]=useState(false);
   const [docTab,setDocTab]=useState(0);
+  const sampleIdx=useRef({academy:0,tutoring:0});
 
+  const ct=COURSE_TYPES[courseType]||null;
   const liveRows=editRows.filter(r=>r.tp!=="삭제");
   const hasOver=liveRows.some(r=>calc(r).st==="초과");
   const allFilled=liveRows.length>0&&liveRows.every(r=>calc(r).ok);
@@ -137,23 +240,30 @@ function App(){
   const updEdit=(id,k,v)=>setEditRows(prev=>prev.map(r=>{
     if(r.id!==id)return r;
     const u={...r,[k]:v};
-    if(k==="f")return{...u,c:"",p:"",d:""};
-    if(k==="c")return{...u,p:"",d:""};
     if(k==="p")return{...u,d:""};
     return u;
   }));
-  const addEdit=()=>setEditRows(p=>[...p,blankRow(Math.max(0,...p.map(r=>r.id))+1)]);
+  const addEdit=()=>{
+    const nid=Math.max(0,...editRows.map(r=>r.id))+1;
+    setEditRows(p=>[...p,blankRow(nid,courseType)]);
+  };
   const delEdit=(id)=>setEditRows(p=>p.length>1?p.filter(r=>r.id!==id):p);
 
   const loadSample=useCallback(()=>{
     const isA=type==="academy";
-    setInfo(isA?{...INFO_A}:{...INFO_T});
-    setExistingRows((isA?EXISTING_A:EXISTING_T).map(r=>({...r})));
+    const samples=isA?ACADEMY_SAMPLES:TUTORING_SAMPLES;
+    const key=isA?"academy":"tutoring";
+    const idx=sampleIdx.current[key]%samples.length;
+    sampleIdx.current[key]=idx+1;
+    const s=samples[idx];
+    setInfo({...s.info});
+    setCourseType(s.ct);
+    setExistingRows(s.existing.map(r=>({...r})));
     if(mode==="일부수정"){
-      setEditRows((isA?NEW_A:NEW_T).map(r=>({...r})));
-    } else {
-      const newOnly=(isA?NEW_A:NEW_T).filter(r=>r.tp==="추가");
-      setEditRows(newOnly.length>0?newOnly.map(r=>({...r})):[blankRow(301)]);
+      setEditRows(s.editRows.map(r=>({...r})));
+    }else{
+      const newOnly=s.editRows.filter(r=>r.tp==="추가");
+      setEditRows(newOnly.length>0?newOnly.map(r=>({...r})):[blankRow(301,s.ct)]);
     }
   },[type,mode]);
 
@@ -193,8 +303,7 @@ function App(){
       <p style="text-align:center;color:#555;">${OFFICES.find(o=>o.id===office)?.name||""} 교육장 귀하</p>`;
     }else{
       body=`<h2 style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;">교습비 등 내역서</h2>
-      <p>${tpLabel}명: ${info.nm||""}</p>
-      ${existSection}
+      <p>${tpLabel}명: ${info.nm||""}</p>${existSection}
       <h3 style="margin:16px 0 8px;font-size:11pt;">\u25a1 ${mode==="일부수정"?"교습비 변경 내역":"신규 교습과정"}</h3>
       <table><thead><tr style="background:#e8e8e8">
       ${mode==="일부수정"?"<th>구분</th>":""}<th>교습과정</th><th>교습과목</th><th>교습대상</th><th>정원</th><th>주총교습시간\u2460<br><span style='font-size:9pt;font-weight:normal'>(하루분\xd7주회)</span></th><th>월총교습시간\u2461<br><span style='font-size:9pt;font-weight:normal'>(\u2460\xd7${editRows[0]?.wpm||"4.2"}주)</span></th><th>분당단가\u2462<br><span style='font-size:9pt;font-weight:normal'>(\u2463\xf7\u2461)</span></th><th>교습비\u2463</th></tr></thead><tbody>
@@ -218,113 +327,107 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   };
 
-  // ── 공용 인라인 컴포넌트 ──
+  // ── 공용 컴포넌트 ──
   const Sel=({value,options,onChange,ph="선택",w,disabled:dis})=>(
     <select value={value} onChange={e=>onChange(e.target.value)} disabled={dis}
-      style={{padding:"3px 2px",border:"1px solid #ccd",borderRadius:2,fontSize:11,background:dis?"#f5f5f5":"#fff",opacity:dis?.5:1,...(w?{width:w}:{})}}>
+      style={{padding:"3px 2px",border:"1px solid #ccd",borderRadius:2,fontSize:11,background:dis?"#f0f0f0":"#fff",opacity:dis?.6:1,color:dis?"#555":"#222",...(w?{width:w}:{})}}>
       <option value="">{ph}</option>
       {options.map(o=><option key={o} value={o}>{o}</option>)}
     </select>
   );
   const Inp=({value,onChange,ph="",tp="text",w,disabled:dis,bold,color:cl,bc})=>(
     <input type={tp} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={ph} disabled={dis}
-      style={{padding:"3px 4px",border:`1px solid ${bc||"#ccd"}`,borderRadius:2,fontSize:11,background:dis?"#f5f5f5":"#fff",
-        opacity:dis?.5:1,fontWeight:bold?700:400,color:cl||"#222",...(w?{width:w}:{})}} />
+      style={{padding:"3px 4px",border:`1px solid ${bc||"#ccd"}`,borderRadius:2,fontSize:11,background:dis?"#f0f0f0":"#fff",
+        opacity:dis?.6:1,fontWeight:bold?700:400,color:cl||"#222",...(w?{width:w}:{})}} />
   );
 
   // ════════════════════════════════════════
   // STEP 0
-  // ════════════════════════════════════════
-  const renderStep0=()=>(
-    <div style={S.card}>
-      <div style={S.cardTitle}>교육지원청 및 신청 유형 선택</div>
-      <div style={S.fg}>
-        <label style={S.label}>교육지원청</label>
-        <select value={office} onChange={e=>setOffice(e.target.value)} style={{...S.sel,width:"100%"}}>
-          <option value="">교육지원청을 선택하세요</option>
-          {OFFICES.map(o=><option key={o.id} value={o.id} disabled={!o.on}>{o.name}{!o.on?" (준비중)":""}</option>)}
-        </select>
-        {office&&<div style={S.hint}>✓ 강서양천교육지원청 교습비 조정기준액 (2024.12.1. 시행) 적용</div>}
-      </div>
-      <div style={S.fg}>
-        <label style={S.label}>신청 유형</label>
-        <div style={{display:"flex",gap:12}}>
-          {[["academy","학원","학원 교습비등 변경등록 신청"],["tutoring","교습소","교습소 교습비등 변경신고"]].map(([v,l,d])=>(
-            <button key={v} onClick={()=>setType(v)} style={type===v?S.typeActive:S.typeBtn}>
-              <div style={{fontWeight:700,fontSize:15}}>{l}</div>
-              <div style={{fontSize:12,marginTop:2,color:type===v?"#c5d8f0":"#888"}}>{d}</div>
-            </button>
-          ))}
-        </div>
+  const renderStep0=()=>(<div style={S.card}>
+    <div style={S.cardTitle}>교육지원청 및 신청 유형 선택</div>
+    <div style={S.fg}><label style={S.label}>교육지원청</label>
+      <select value={office} onChange={e=>setOffice(e.target.value)} style={{...S.sel,width:"100%"}}>
+        <option value="">교육지원청을 선택하세요</option>
+        {OFFICES.map(o=><option key={o.id} value={o.id} disabled={!o.on}>{o.name}{!o.on?" (준비중)":""}</option>)}
+      </select>
+      {office&&<div style={S.hint}>✓ 강서양천교육지원청 교습비 조정기준액 (2024.12.1. 시행) 적용</div>}
+    </div>
+    <div style={S.fg}><label style={S.label}>신청 유형</label>
+      <div style={{display:"flex",gap:12}}>
+        {[["academy","학원","학원 교습비등 변경등록 신청"],["tutoring","교습소","교습소 교습비등 변경신고"]].map(([v,l,d])=>(
+          <button key={v} onClick={()=>setType(v)} style={type===v?S.typeActive:S.typeBtn}>
+            <div style={{fontWeight:700,fontSize:15}}>{l}</div>
+            <div style={{fontSize:12,marginTop:2,color:type===v?"#c5d8f0":"#888"}}>{d}</div>
+          </button>
+        ))}
       </div>
     </div>
-  );
+  </div>);
 
-  // ════════════════════════════════════════
   // STEP 1
-  // ════════════════════════════════════════
-  const renderStep1=()=>(
-    <div style={S.card}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div style={S.cardTitle}>기본정보 입력</div>
-        <button onClick={loadSample} style={S.sampleBtn}>📋 샘플 데이터 불러오기</button>
-      </div>
-      <p style={{fontSize:12,color:"#666",margin:"0 0 16px"}}>※ 실제 서비스에서는 나이스 등록 데이터에서 자동으로 불러옵니다.</p>
-      {type==="academy"?(
-        <div style={S.grid2}>
-          {[["설립·운영자 이름","ownerName","홍길동"],["생년월일","birth","","date"],["주소","addr","주소"],["연락처","ph","010-0000-0000","tel"],["학원명","nm","학원명"],["등록번호","reg","제0000-0000호"],["학원 위치","loc","소재지"],["학원 전화번호","tel","02-0000-0000","tel"]].map(([lb,k,ph,tp])=>(
-            <div key={k} style={S.fg}><label style={S.label}>{lb}</label><input style={S.inp} type={tp||"text"} value={info[k]||""} onChange={e=>setInfo(p=>({...p,[k]:e.target.value}))} placeholder={ph}/></div>
-          ))}
-        </div>
-      ):(
-        <div style={S.grid2}>
-          {[["교습자 성명","ownerName","홍길동"],["생년월일","birth","","date"],["이메일","email","email@example.com","email"],["교습소명","nm","교습소명"],["신고번호","reg","제0000-0000호"],["위치","loc","소재지"],["전화번호","tel","02-0000-0000","tel"],["교습과목","subj","교습과목"]].map(([lb,k,ph,tp])=>(
-            <div key={k} style={S.fg}><label style={S.label}>{lb}</label><input style={S.inp} type={tp||"text"} value={info[k]||""} onChange={e=>setInfo(p=>({...p,[k]:e.target.value}))} placeholder={ph}/></div>
-          ))}
-        </div>
-      )}
+  const renderStep1=()=>(<div style={S.card}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+      <div style={S.cardTitle}>기본정보 입력</div>
+      <button onClick={loadSample} style={S.sampleBtn}>📋 샘플 데이터 불러오기 (랜덤)</button>
     </div>
-  );
-
-  // ════════════════════════════════════════
-  // STEP 2: 변경사유 선택
-  // ════════════════════════════════════════
-  const renderStep2=()=>(
-    <div style={S.card}>
-      <div style={S.cardTitle}>변경 사유 선택</div>
-      <div style={S.fg}>
-        <label style={S.label}>변경 구분</label>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
-          {[
-            ["기존삭제","기존 교습비 전체 삭제 후 새로 등록","기존 등록된 모든 교습과목을 삭제하고, 새로운 교습비를 전체 등록합니다."],
-            ["기존유지","기존 교습비 유지 + 신규 과목 추가","기존 등록된 교습과목은 그대로 유지하고, 새로운 교습과목을 추가 등록합니다."],
-            ["일부수정","기존 교습비 일부 변경 (삭제·변경·추가)","기존 교습과목 중 일부를 삭제하거나 변경하고, 새로운 과목을 추가할 수 있습니다."],
-          ].map(([v,t,desc])=>(
-            <label key={v} onClick={()=>setMode(v)} style={{display:"flex",gap:10,padding:"14px 16px",border:`2px solid ${mode===v?"#1a4b8c":"#d4dde9"}`,borderRadius:8,background:mode===v?"#f0f4fa":"#fff",cursor:"pointer",alignItems:"flex-start"}}>
-              <input type="radio" name="mode" checked={mode===v} onChange={()=>setMode(v)} style={{marginTop:3}} />
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:14,color:mode===v?"#1a4b8c":"#333"}}>{v}</div>
-                <div style={{fontSize:13,color:"#555",marginTop:1}}>{t}</div>
-                <div style={{fontSize:12,color:"#888",marginTop:3}}>{desc}</div>
-              </div>
-            </label>
-          ))}
-        </div>
+    <p style={{fontSize:12,color:"#666",margin:"0 0 16px"}}>※ 실제 서비스에서는 나이스 등록 데이터에서 자동으로 불러옵니다.</p>
+    {type==="academy"?(<div style={S.grid2}>
+      {[["설립·운영자 이름","ownerName","홍길동"],["생년월일","birth","","date"],["주소","addr","주소"],["연락처","ph","010-0000-0000","tel"],["학원명","nm","학원명"],["등록번호","reg","숫자 입력"],["학원 위치","loc","소재지"],["학원 전화번호","tel","02-0000-0000","tel"]].map(([lb,k,ph,tp])=>(
+        <div key={k+lb} style={S.fg}><label style={S.label}>{lb}</label><input style={S.inp} type={tp||"text"} value={info[k]||""} onChange={e=>setInfo(p=>({...p,[k]:e.target.value}))} placeholder={ph}/></div>
+      ))}
+      <div style={S.fg}><label style={S.label}>교습과정 유형</label>
+        <select style={S.sel} value={courseType} onChange={e=>setCourseType(e.target.value)}>
+          <option value="">선택하세요</option>
+          {Object.keys(COURSE_TYPES).map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
       </div>
-      <div style={{background:"#f0f4fa",borderRadius:6,padding:14,fontSize:13,lineHeight:1.7,color:"#444",marginTop:12}}>
-        <strong>안내사항</strong><br/>
-        • 변경사유: 교습비 변경<br/>
-        • 「학원의 설립·운영 및 과외교습에 관한 법률」 제{type==="academy"?"6":"14"}조에 따라 {type==="academy"?"변경등록을 신청":"변경 신고를"} 합니다.
+    </div>):(<div style={S.grid2}>
+      {[["교습자 성명","ownerName","홍길동"],["생년월일","birth","","date"],["이메일","email","email@example.com","email"],["교습소명","nm","교습소명"],["신고번호","reg","숫자 입력"],["위치","loc","소재지"],["전화번호","tel","02-0000-0000","tel"],["교습과목","subj","교습과목"]].map(([lb,k,ph,tp])=>(
+        <div key={k+lb} style={S.fg}><label style={S.label}>{lb}</label><input style={S.inp} type={tp||"text"} value={info[k]||""} onChange={e=>setInfo(p=>({...p,[k]:e.target.value}))} placeholder={ph}/></div>
+      ))}
+      <div style={S.fg}><label style={S.label}>교습과정 유형</label>
+        <select style={S.sel} value={courseType} onChange={e=>setCourseType(e.target.value)}>
+          <option value="">선택하세요</option>
+          {Object.keys(COURSE_TYPES).map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+    </div>)}
+  </div>);
+
+  // STEP 2
+  const renderStep2=()=>(<div style={S.card}>
+    <div style={S.cardTitle}>변경 사유 선택</div>
+    <div style={S.fg}><label style={S.label}>변경 구분</label>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
+        {[
+          ["기존삭제","기존 교습비 전체 삭제 후 새로 등록","기존 등록된 모든 교습과목을 삭제하고, 새로운 교습비를 전체 등록합니다."],
+          ["기존유지","기존 교습비 유지 + 신규 과목 추가","기존 등록된 교습과목은 그대로 유지하고, 새로운 교습과목을 추가 등록합니다."],
+          ["일부수정","기존 교습비 일부 변경 (삭제·변경·추가)","기존 교습과목 중 일부를 삭제하거나 변경하고, 새로운 과목을 추가할 수 있습니다."],
+        ].map(([v,t,desc])=>(
+          <label key={v} onClick={()=>setMode(v)} style={{display:"flex",gap:10,padding:"14px 16px",border:`2px solid ${mode===v?"#1a4b8c":"#d4dde9"}`,borderRadius:8,background:mode===v?"#f0f4fa":"#fff",cursor:"pointer",alignItems:"flex-start"}}>
+            <input type="radio" name="mode" checked={mode===v} onChange={()=>setMode(v)} style={{marginTop:3}} />
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:14,color:mode===v?"#1a4b8c":"#333"}}>{v}</div>
+              <div style={{fontSize:13,color:"#555",marginTop:1}}>{t}</div>
+              <div style={{fontSize:12,color:"#888",marginTop:3}}>{desc}</div>
+            </div>
+          </label>
+        ))}
       </div>
     </div>
-  );
+    <div style={{background:"#f0f4fa",borderRadius:6,padding:14,fontSize:13,lineHeight:1.7,color:"#444",marginTop:12}}>
+      <strong>안내사항</strong><br/>• 변경사유: 교습비 변경<br/>
+      • 「학원의 설립·운영 및 과외교습에 관한 법률」 제{type==="academy"?"6":"14"}조에 따라 {type==="academy"?"변경등록을 신청":"변경 신고를"} 합니다.
+    </div>
+  </div>);
 
   // ════════════════════════════════════════
-  // STEP 3: 교습비 내역서 (PDF 서식 스타일 테이블)
-  // ════════════════════════════════════════
+  // STEP 3: 교습비 내역서
   const renderStep3=()=>{
     const overCount=liveRows.filter(r=>calc(r).st==="초과").length;
     const isPartial=mode==="일부수정";
+    const courseLocked=!!ct;
+    const allowedP=ct?.allowedP||[];
 
     const TH=({children,w,bg})=><th style={{border:"1px solid #b0bec5",padding:"6px 3px",fontWeight:600,fontSize:10,whiteSpace:"nowrap",textAlign:"center",lineHeight:1.3,background:bg||"#d4dde9",...(w?{width:w}:{})}}>{children}</th>;
     const TD=({children,style:sx})=><td style={{border:"1px solid #d4dde9",padding:"3px 2px",textAlign:"center",verticalAlign:"middle",fontSize:11,...sx}}>{children}</td>;
@@ -335,13 +438,15 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
       const isOver=rc.st==="초과"&&!isDel;
       const isDup=!isDel&&row.nm&&dupNames.has(row.nm.trim());
       const bg=isDel?"#f9f9f9":isOver?"#fdf5f5":isDup?"#fef9e7":i%2===0?"#fff":"#f8fafc";
+      const pOptions=courseLocked?allowedP:[];
+      const dOptions=row.p?gD(row.f,row.c,row.p):[];
       return(
         <tr key={row.id} style={{background:bg,textDecoration:isDel?"line-through":"none",color:isDel?"#aaa":"#222"}}>
           {isPartial&&<TD><select value={row.tp} onChange={e=>updEdit(row.id,"tp",e.target.value)} style={{padding:"2px",border:"1px solid #ccd",borderRadius:2,fontSize:11,width:52,fontWeight:600,color:row.tp==="삭제"?"#c0392b":row.tp==="변경"?"#1a4b8c":"#27ae60"}}>{["삭제","변경","추가"].map(o=><option key={o}>{o}</option>)}</select></TD>}
-          <TD><Sel value={row.f} options={gF()} onChange={v=>updEdit(row.id,"f",v)} ph="분야" w="100px" disabled={isDel}/></TD>
-          <TD><Sel value={row.c} options={row.f?gC(row.f):[]} onChange={v=>updEdit(row.id,"c",v)} ph="계열" w="80px" disabled={isDel}/></TD>
-          <TD><Sel value={row.p} options={row.c?gP(row.f,row.c):[]} onChange={v=>updEdit(row.id,"p",v)} ph="과정" w="100px" disabled={isDel}/></TD>
-          <TD><Sel value={row.d} options={row.p?gD(row.f,row.c,row.p):[]} onChange={v=>updEdit(row.id,"d",v)} ph="대상" w="66px" disabled={isDel}/></TD>
+          <TD style={{fontSize:11,color:"#555",background:courseLocked?"#f5f5f5":"transparent"}}>{courseLocked?<span title="등록된 교습과정에 따라 자동 설정">{ct.f}</span>:row.f||"-"}</TD>
+          <TD style={{fontSize:11,color:"#555",background:courseLocked?"#f5f5f5":"transparent"}}>{courseLocked?ct.c:row.c||"-"}</TD>
+          <TD>{isDel?"-":courseLocked?<Sel value={row.p} options={pOptions} onChange={v=>updEdit(row.id,"p",v)} ph="과정" w="100px"/>:row.p||"-"}</TD>
+          <TD>{isDel?"-":<Sel value={row.d} options={dOptions} onChange={v=>updEdit(row.id,"d",v)} ph="대상" w="66px"/>}</TD>
           <TD style={{fontWeight:700,color:"#1a4b8c",fontSize:11,background:isDel?"#f9f9f9":"#eef3fa"}}>{isDel?"-":rc.std!==null?rc.std:"-"}</TD>
           <TD style={{background:isDup?"#fef3c7":"transparent"}}><Inp value={row.nm} onChange={v=>updEdit(row.id,"nm",v)} ph="과목명" w="90px" disabled={isDel} bc={isDup?"#e67e22":undefined} color={isDup?"#e67e22":undefined}/></TD>
           <TD><Inp value={row.cap} onChange={v=>updEdit(row.id,"cap",v)} ph="0" tp="number" w="42px" disabled={isDel}/></TD>
@@ -355,354 +460,260 @@ h2{font-size:14pt;margin:0 0 16px;} h3{font-size:11pt;margin:16px 0 8px;}
           </TD>
           <TD style={{fontWeight:700,fontSize:11,color:isDel?"#aaa":isOver?"#c0392b":"#27ae60"}}>{isDel?"-":rc.pm>0?rc.pm.toFixed(2):"-"}</TD>
           <TD>{isDel?<span style={{color:"#aaa",fontSize:10}}>삭제</span>:rc.st?<span style={{display:"inline-block",padding:"1px 7px",borderRadius:8,fontSize:10,color:"#fff",background:isOver?"#c0392b":"#27ae60",fontWeight:700}}>{rc.st}</span>:"-"}</TD>
-          <TD style={{borderLeft:"none",padding:"2px"}}>
-            {(!isPartial||row.tp==="추가")&&editRows.length>1?<button onClick={()=>delEdit(row.id)} style={{background:"none",border:"1px solid #ddd",borderRadius:2,color:"#999",fontSize:10,cursor:"pointer",padding:"1px 5px"}}>✕</button>:null}
-          </TD>
+          <TD style={{borderLeft:"none",padding:"2px"}}>{(!isPartial||row.tp==="추가")&&editRows.length>1?<button onClick={()=>delEdit(row.id)} style={{background:"none",border:"1px solid #ddd",borderRadius:2,color:"#999",fontSize:10,cursor:"pointer",padding:"1px 5px"}}>✕</button>:null}</TD>
         </tr>
       );
     };
 
     const renderReadonlyRow=(row,i,isDel)=>{
       const rc=calc(row);
-      return(
-        <tr key={row.id} style={{background:i%2===0?"#fff":"#f8fafc",textDecoration:isDel?"line-through":"none",color:isDel?"#bbb":"#222"}}>
-          <td style={S.rtd}>{row.f}</td><td style={S.rtd}>{row.c}</td><td style={S.rtd}>{row.p}</td><td style={S.rtd}>{row.d}</td>
-          <td style={{...S.rtd,fontWeight:700,color:"#1a4b8c",background:"#eef3fa"}}>{rc.std||"-"}</td>
-          <td style={S.rtd}>{row.nm}</td><td style={S.rtd}>{row.cap}</td><td style={S.rtd}>{row.mpd}</td><td style={S.rtd}>{row.dpw}</td><td style={S.rtd}>{row.wpm}</td>
-          <td style={{...S.rtd,fontWeight:600}}>{rc.wk}</td><td style={{...S.rtd,fontWeight:600}}>{fmt(rc.mo)}</td>
-          <td style={{...S.rtd,fontWeight:700}}>{fmt(+row.fee)}</td>
-          <td style={S.rtd}>{rc.pm.toFixed(2)}</td>
-          <td style={S.rtd}>{isDel?<span style={{color:"#c0392b",fontSize:10}}>삭제</span>:<span style={{color:"#27ae60",fontSize:10}}>유지</span>}</td>
-        </tr>
-      );
+      return(<tr key={row.id} style={{background:i%2===0?"#fff":"#f8fafc",textDecoration:isDel?"line-through":"none",color:isDel?"#bbb":"#222"}}>
+        <td style={S.rtd}>{row.f}</td><td style={S.rtd}>{row.c}</td><td style={S.rtd}>{row.p}</td><td style={S.rtd}>{row.d}</td>
+        <td style={{...S.rtd,fontWeight:700,color:"#1a4b8c",background:"#eef3fa"}}>{rc.std||"-"}</td>
+        <td style={S.rtd}>{row.nm}</td><td style={S.rtd}>{row.cap}</td><td style={S.rtd}>{row.mpd}</td><td style={S.rtd}>{row.dpw}</td><td style={S.rtd}>{row.wpm}</td>
+        <td style={{...S.rtd,fontWeight:600}}>{rc.wk}</td><td style={{...S.rtd,fontWeight:600}}>{fmt(rc.mo)}</td>
+        <td style={{...S.rtd,fontWeight:700}}>{fmt(+row.fee)}</td><td style={S.rtd}>{rc.pm.toFixed(2)}</td>
+        <td style={S.rtd}>{isDel?<span style={{color:"#c0392b",fontSize:10}}>삭제</span>:<span style={{color:"#27ae60",fontSize:10}}>유지</span>}</td>
+      </tr>);
     };
 
-    const header=(showType,hasAction)=>(
-      <tr>
-        {showType&&<TH w="52px">구분</TH>}
-        <TH>분야</TH><TH>계열</TH><TH>교습과정</TH><TH>교습대상</TH>
-        <TH bg="#dce6f0">기준<br/>단가</TH>
-        <TH>교습<br/>과목명</TH><TH w="44px">정원</TH>
-        <TH w="52px">하루<br/>(분)</TH><TH w="42px">주<br/>(회)</TH><TH w="50px">월<br/>주수</TH>
-        <TH>주총<br/>시간①</TH><TH>월총<br/>시간②</TH>
-        <TH bg="#dce6f0">희망<br/>교습비④</TH>
-        <TH>분당<br/>단가③</TH><TH>판정</TH>
-        {hasAction&&<TH w="28px" bg="#eee"> </TH>}
-      </tr>
-    );
+    const header=(showType,hasAction)=>(<tr>
+      {showType&&<TH w="52px">구분</TH>}
+      <TH>분야</TH><TH>계열</TH><TH>교습과정</TH><TH>교습대상</TH>
+      <TH bg="#dce6f0">기준<br/>단가</TH><TH>교습<br/>과목명</TH><TH w="44px">정원</TH>
+      <TH w="52px">하루<br/>(분)</TH><TH w="42px">주<br/>(회)</TH><TH w="50px">월<br/>주수</TH>
+      <TH>주총<br/>시간①</TH><TH>월총<br/>시간②</TH>
+      <TH bg="#dce6f0">희망<br/>교습비④</TH><TH>분당<br/>단가③</TH><TH>판정</TH>
+      {hasAction&&<TH w="28px" bg="#eee"> </TH>}
+    </tr>);
 
-    return(
-      <div style={S.card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-          <div style={S.cardTitle}>교습비 등 내역서</div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={loadSample} style={S.sampleBtn}>📋 샘플 데이터</button>
-            <button onClick={addEdit} style={S.addBtn}>+ 교습과목 추가</button>
-          </div>
+    return(<div style={S.card}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={S.cardTitle}>교습비 등 내역서</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={loadSample} style={S.sampleBtn}>📋 샘플 데이터 (랜덤)</button>
+          <button onClick={addEdit} style={S.addBtn}>+ 교습과목 추가</button>
         </div>
-        <p style={{fontSize:12,color:"#666",margin:"0 0 8px"}}>
-          {OFFICES.find(o=>o.id===office)?.name} | 조정기준액 2024.12.1. 시행 | 변경구분: <strong>{mode}</strong>
-        </p>
-
-        {/* 기존 교습과정 (기존삭제/기존유지) */}
-        {!isPartial&&existingRows.length>0&&(
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",margin:"8px 0 4px",display:"flex",alignItems:"center",gap:6}}>
-              {mode==="기존삭제"?"🗑 삭제되는 기존 교습과정":"📌 유지되는 기존 교습과정"}
-              <span style={{fontSize:11,fontWeight:400,color:"#888"}}>(수정 불가)</span>
-            </div>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse"}}>
-                <thead>{header(false,false)}</thead>
-                <tbody>{existingRows.map((r,i)=>renderReadonlyRow(r,i,mode==="기존삭제"))}</tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* 편집 테이블 */}
-        <div style={{fontSize:13,fontWeight:700,color:"#1a4b8c",margin:"8px 0 4px"}}>
-          {isPartial?"📝 교습비 변경 내역 (삭제·변경·추가)":"➕ 신규 교습과정"}
-        </div>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead>{header(isPartial,true)}</thead>
-            <tbody>{editRows.map((r,i)=>renderEditableRow(r,i))}</tbody>
-          </table>
-        </div>
-
-        {hasOver&&<div style={S.errorBox}>⚠️ 기준단가 초과 항목이 {overCount}건 있습니다. 교습비를 조정해야 다음 단계로 진행할 수 있습니다.</div>}
-        {hasDup&&<div style={{background:"#fef9e7",border:"1px solid #f0c040",borderRadius:6,padding:"14px 18px",color:"#e67e22",fontSize:14,fontWeight:600,marginTop:10}}>⚠️ 동일한 교습과목명이 있습니다: {[...dupNames].map(n=>`"${n}"`).join(", ")}. 교습과목명은 중복될 수 없습니다.</div>}
-        {allOk&&<div style={S.successBox}>✅ 모든 교습과목의 분당단가가 기준 이내입니다. 다음 단계로 진행할 수 있습니다.</div>}
       </div>
-    );
+
+      {/* 교습과정 유형 안내 */}
+      {ct&&<div style={{background:"#e8eef7",borderRadius:6,padding:"10px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,color:"#333"}}>📌 {type==="academy"?"학원":"교습소"} 등록 교습과정:</span>
+        <span style={{fontWeight:700,fontSize:14,color:"#1a4b8c",background:"#fff",padding:"3px 12px",borderRadius:4,border:"1px solid #1a4b8c"}}>{courseType}</span>
+        <span style={{fontSize:12,color:"#666"}}>분야: {ct.f} | 계열: {ct.c} | 선택 가능 교습과정: {allowedP.join(", ")}</span>
+      </div>}
+
+      <p style={{fontSize:12,color:"#666",margin:"0 0 8px"}}>
+        {OFFICES.find(o=>o.id===office)?.name} | 조정기준액 2024.12.1. 시행 | 변경구분: <strong>{mode}</strong>
+      </p>
+
+      {!isPartial&&existingRows.length>0&&(<div style={{marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",margin:"8px 0 4px",display:"flex",alignItems:"center",gap:6}}>
+          {mode==="기존삭제"?"🗑 삭제되는 기존 교습과정":"📌 유지되는 기존 교습과정"}
+          <span style={{fontSize:11,fontWeight:400,color:"#888"}}>(수정 불가)</span>
+        </div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>{header(false,false)}</thead>
+          <tbody>{existingRows.map((r,i)=>renderReadonlyRow(r,i,mode==="기존삭제"))}</tbody>
+        </table></div>
+      </div>)}
+
+      <div style={{fontSize:13,fontWeight:700,color:"#1a4b8c",margin:"8px 0 4px"}}>
+        {isPartial?"📝 교습비 변경 내역 (삭제·변경·추가)":"➕ 신규 교습과정"}
+      </div>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead>{header(isPartial,true)}</thead>
+        <tbody>{editRows.map((r,i)=>renderEditableRow(r,i))}</tbody>
+      </table></div>
+
+      {hasOver&&<div style={S.errorBox}>⚠️ 기준단가 초과 항목이 {overCount}건 있습니다. 교습비를 조정해야 다음 단계로 진행할 수 있습니다.</div>}
+      {hasDup&&<div style={{background:"#fef9e7",border:"1px solid #f0c040",borderRadius:6,padding:"14px 18px",color:"#e67e22",fontSize:14,fontWeight:600,marginTop:10}}>⚠️ 동일한 교습과목명이 있습니다: {[...dupNames].map(n=>`"${n}"`).join(", ")}. 교습과목명은 중복될 수 없습니다.</div>}
+      {allOk&&<div style={S.successBox}>✅ 모든 교습과목의 분당단가가 기준 이내입니다. 다음 단계로 진행할 수 있습니다.</div>}
+    </div>);
   };
 
   // ════════════════════════════════════════
   // STEP 4: 확인 및 제출
-  // ════════════════════════════════════════
   const renderStep4=()=>{
-    if(submitted)return(
-      <div style={{...S.card,textAlign:"center",padding:48}}>
-        <div style={{fontSize:48,marginBottom:16}}>✅</div>
-        <div style={{fontSize:22,fontWeight:700,color:"#1a4b8c",marginBottom:8}}>교습비 변경 {type==="academy"?"등록신청":"신고"}이 완료되었습니다</div>
-        <div style={{fontSize:14,color:"#666",marginBottom:8}}>접수번호: GSYC-2026-{String(Math.floor(Math.random()*9000)+1000)}</div>
-        <div style={{fontSize:13,color:"#888",marginBottom:24}}>수리 여부 결과를 휴대폰 문자로 안내해 드리겠습니다.</div>
-        <button onClick={()=>setStep(5)} style={S.primaryBtn}>서류 출력하기 →</button>
-      </div>
-    );
+    if(submitted)return(<div style={{...S.card,textAlign:"center",padding:48}}>
+      <div style={{fontSize:48,marginBottom:16}}>✅</div>
+      <div style={{fontSize:22,fontWeight:700,color:"#1a4b8c",marginBottom:8}}>교습비 변경 {type==="academy"?"등록신청":"신고"}이 완료되었습니다</div>
+      <div style={{fontSize:14,color:"#666",marginBottom:8}}>접수번호: GSYC-2026-{String(Math.floor(Math.random()*9000)+1000)}</div>
+      <div style={{fontSize:13,color:"#888",marginBottom:24}}>수리 여부 결과를 휴대폰 문자로 안내해 드리겠습니다.</div>
+      <button onClick={()=>setStep(5)} style={S.primaryBtn}>서류 출력하기 →</button>
+    </div>);
     const tpLabel=type==="academy"?"학원":"교습소";
     const delRows=editRows.filter(r=>r.tp==="삭제");
-    return(
-      <div style={S.card}>
-        <div style={S.cardTitle}>신청 내용 확인 및 제출</div>
-        <div style={{marginBottom:20}}>
-          <div style={S.pvTitle}>{tpLabel} 교습비등 {type==="academy"?"변경등록 신청서":"변경신고서"}</div>
-          <table style={S.pvTable}><tbody>
-            <tr><td style={S.ptH}>{type==="academy"?"설립·운영자":"교습자"}</td><td style={S.ptD}>{info.ownerName}</td><td style={S.ptH}>생년월일</td><td style={S.ptD}>{info.birth}</td></tr>
-            <tr><td style={S.ptH}>{tpLabel}명</td><td style={S.ptD}>{info.nm}</td><td style={S.ptH}>{type==="academy"?"등록번호":"신고번호"}</td><td style={S.ptD}>{info.reg}</td></tr>
-            <tr><td style={S.ptH}>위치</td><td style={S.ptD} colSpan={3}>{info.loc}</td></tr>
-            <tr><td style={S.ptH}>변경구분</td><td style={S.ptD} colSpan={3}>{mode}</td></tr>
-          </tbody></table>
-        </div>
-
-        <div style={{marginBottom:20}}>
-          <div style={S.pvTitle}>교습비 등 내역서</div>
-          {mode!=="일부수정"&&existingRows.length>0&&(
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",marginBottom:4}}>[{mode==="기존삭제"?"삭제":"유지"}] 기존 교습과정</div>
-              <table style={S.pvTable}><thead><tr style={{background:"#e8eef7"}}>
-                <th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th><th style={S.th2}>정원</th><th style={S.th2}>교습비</th>
-              </tr></thead><tbody>
-                {existingRows.map(r=>(
-                  <tr key={r.id} style={{textDecoration:mode==="기존삭제"?"line-through":"none",color:mode==="기존삭제"?"#bbb":"#222"}}>
-                    <td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td><td style={S.td2}>{r.cap}명</td><td style={S.td2}>{fmt(+r.fee)}원</td>
-                  </tr>
-                ))}
-              </tbody></table>
-            </div>
-          )}
-          {mode==="일부수정"&&delRows.length>0&&(
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:4}}>[삭제] 교습과정</div>
-              <table style={S.pvTable}><thead><tr style={{background:"#fde8e8"}}>
-                <th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th>
-              </tr></thead><tbody>
-                {delRows.map(r=>(<tr key={r.id} style={{textDecoration:"line-through",color:"#bbb"}}><td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td></tr>))}
-              </tbody></table>
-            </div>
-          )}
-          <div style={{fontSize:12,fontWeight:700,color:"#1a4b8c",marginBottom:4}}>[{mode==="일부수정"?"변경·추가":"신규"}] 교습과정</div>
-          <div style={{overflowX:"auto"}}>
-            <table style={S.pvTable}><thead><tr style={{background:"#d4dde9"}}>
-              {mode==="일부수정"&&<th style={S.th2}>구분</th>}
-              <th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th><th style={S.th2}>정원</th>
-              <th style={S.th2}>주총시간①</th><th style={S.th2}>월총시간②</th><th style={S.th2}>분당단가③</th><th style={S.th2}>교습비④</th><th style={S.th2}>판정</th>
-            </tr></thead><tbody>
-              {liveRows.map(r=>{const rc=calc(r);return(
-                <tr key={r.id}>
-                  {mode==="일부수정"&&<td style={{...S.td2,fontWeight:600,color:r.tp==="변경"?"#1a4b8c":"#27ae60"}}>{r.tp}</td>}
-                  <td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td><td style={S.td2}>{r.cap}명</td>
-                  <td style={S.td2}>{fmt(rc.wk)}분</td><td style={S.td2}>{fmt(rc.mo)}분</td>
-                  <td style={S.td2}>{rc.pm.toFixed(2)}원</td>
-                  <td style={{...S.td2,fontWeight:700}}>{fmt(+r.fee)}원</td>
-                  <td style={{...S.td2,color:rc.st==="적정"?"#27ae60":"#c0392b",fontWeight:700}}>{rc.st}</td>
-                </tr>
-              );})}
-            </tbody></table>
-          </div>
-        </div>
-
-        <div style={{textAlign:"center",padding:"16px 0"}}>
-          <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontSize:15}}>
-            <input type="checkbox" checked={signed} onChange={e=>setSigned(e.target.checked)} style={{width:20,height:20}}/>
-            <span>위 내용이 사실과 다름없음을 확인하며, 전자서명합니다.</span>
-          </label>
-          <div style={{marginTop:6,fontSize:12,color:"#888"}}>신청인({type==="academy"?"학원설립·운영자":"교습자"}): {info.ownerName} (전자서명)</div>
-          <div style={{marginTop:6,fontSize:12,color:"#888"}}>{OFFICES.find(o=>o.id===office)?.name} 교육장 귀하</div>
-        </div>
-        <div style={{textAlign:"center",marginTop:8}}>
-          <button disabled={!signed} onClick={()=>setSubmitted(true)} style={signed?S.submitBtn:S.submitBtnOff}>
-            {signed?"온라인 제출하기":"전자서명 후 제출 가능합니다"}
-          </button>
-        </div>
+    return(<div style={S.card}>
+      <div style={S.cardTitle}>신청 내용 확인 및 제출</div>
+      <div style={{marginBottom:20}}>
+        <div style={S.pvTitle}>{tpLabel} 교습비등 {type==="academy"?"변경등록 신청서":"변경신고서"}</div>
+        <table style={S.pvTable}><tbody>
+          <tr><td style={S.ptH}>{type==="academy"?"설립·운영자":"교습자"}</td><td style={S.ptD}>{info.ownerName}</td><td style={S.ptH}>생년월일</td><td style={S.ptD}>{info.birth}</td></tr>
+          <tr><td style={S.ptH}>{tpLabel}명</td><td style={S.ptD}>{info.nm}</td><td style={S.ptH}>{type==="academy"?"등록번호":"신고번호"}</td><td style={S.ptD}>{info.reg}</td></tr>
+          <tr><td style={S.ptH}>위치</td><td style={S.ptD} colSpan={3}>{info.loc}</td></tr>
+          <tr><td style={S.ptH}>교습과정</td><td style={S.ptD}>{courseType}</td><td style={S.ptH}>변경구분</td><td style={S.ptD}>{mode}</td></tr>
+        </tbody></table>
       </div>
-    );
+      <div style={{marginBottom:20}}>
+        <div style={S.pvTitle}>교습비 등 내역서</div>
+        {mode!=="일부수정"&&existingRows.length>0&&(<div style={{marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",marginBottom:4}}>[{mode==="기존삭제"?"삭제":"유지"}] 기존 교습과정</div>
+          <table style={S.pvTable}><thead><tr style={{background:"#e8eef7"}}>
+            <th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th><th style={S.th2}>정원</th><th style={S.th2}>교습비</th>
+          </tr></thead><tbody>{existingRows.map(r=>(
+            <tr key={r.id} style={{textDecoration:mode==="기존삭제"?"line-through":"none",color:mode==="기존삭제"?"#bbb":"#222"}}>
+              <td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td><td style={S.td2}>{r.cap}명</td><td style={S.td2}>{fmt(+r.fee)}원</td>
+            </tr>))}</tbody></table>
+        </div>)}
+        {mode==="일부수정"&&delRows.length>0&&(<div style={{marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#c0392b",marginBottom:4}}>[삭제] 교습과정</div>
+          <table style={S.pvTable}><thead><tr style={{background:"#fde8e8"}}><th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th></tr></thead><tbody>
+            {delRows.map(r=>(<tr key={r.id} style={{textDecoration:"line-through",color:"#bbb"}}><td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td></tr>))}
+          </tbody></table>
+        </div>)}
+        <div style={{fontSize:12,fontWeight:700,color:"#1a4b8c",marginBottom:4}}>[{mode==="일부수정"?"변경·추가":"신규"}] 교습과정</div>
+        <div style={{overflowX:"auto"}}><table style={S.pvTable}><thead><tr style={{background:"#d4dde9"}}>
+          {mode==="일부수정"&&<th style={S.th2}>구분</th>}
+          <th style={S.th2}>교습과정</th><th style={S.th2}>교습과목</th><th style={S.th2}>교습대상</th><th style={S.th2}>정원</th>
+          <th style={S.th2}>주총시간①</th><th style={S.th2}>월총시간②</th><th style={S.th2}>분당단가③</th><th style={S.th2}>교습비④</th><th style={S.th2}>판정</th>
+        </tr></thead><tbody>{liveRows.map(r=>{const rc=calc(r);return(
+          <tr key={r.id}>
+            {mode==="일부수정"&&<td style={{...S.td2,fontWeight:600,color:r.tp==="변경"?"#1a4b8c":"#27ae60"}}>{r.tp}</td>}
+            <td style={S.td2}>{r.p}</td><td style={S.td2}>{r.nm}</td><td style={S.td2}>{r.d}</td><td style={S.td2}>{r.cap}명</td>
+            <td style={S.td2}>{fmt(rc.wk)}분</td><td style={S.td2}>{fmt(rc.mo)}분</td><td style={S.td2}>{rc.pm.toFixed(2)}원</td>
+            <td style={{...S.td2,fontWeight:700}}>{fmt(+r.fee)}원</td>
+            <td style={{...S.td2,color:rc.st==="적정"?"#27ae60":"#c0392b",fontWeight:700}}>{rc.st}</td>
+          </tr>);})}</tbody></table></div>
+      </div>
+      <div style={{textAlign:"center",padding:"16px 0"}}>
+        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontSize:15}}>
+          <input type="checkbox" checked={signed} onChange={e=>setSigned(e.target.checked)} style={{width:20,height:20}}/>
+          <span>위 내용이 사실과 다름없음을 확인하며, 전자서명합니다.</span>
+        </label>
+        <div style={{marginTop:6,fontSize:12,color:"#888"}}>신청인({type==="academy"?"학원설립·운영자":"교습자"}): {info.ownerName} (전자서명)</div>
+        <div style={{marginTop:6,fontSize:12,color:"#888"}}>{OFFICES.find(o=>o.id===office)?.name} 교육장 귀하</div>
+      </div>
+      <div style={{textAlign:"center",marginTop:8}}>
+        <button disabled={!signed} onClick={()=>setSubmitted(true)} style={signed?S.submitBtn:S.submitBtnOff}>
+          {signed?"온라인 제출하기":"전자서명 후 제출 가능합니다"}
+        </button>
+      </div>
+    </div>);
   };
 
   // ════════════════════════════════════════
   // STEP 5: 서류 출력
-  // ════════════════════════════════════════
   const renderStep5=()=>{
     const tabs=[type==="academy"?"변경등록 신청서":"변경신고서","교습비 내역서","교습비등 게시표","반환기준"];
     const tpLabel=type==="academy"?"학원":"교습소";
-    return(
-      <div style={S.card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-          <div style={S.cardTitle}>서류 출력 및 다운로드</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            <button onClick={()=>downloadWord("신청서")} style={S.dlBtn}>📄 {tabs[0]} 다운로드(.doc)</button>
-            <button onClick={()=>downloadWord("내역서")} style={S.dlBtn}>📄 내역서 다운로드(.doc)</button>
-          </div>
+    return(<div style={S.card}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={S.cardTitle}>서류 출력 및 다운로드</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>downloadWord("신청서")} style={S.dlBtn}>📄 {tabs[0]} 다운로드(.doc)</button>
+          <button onClick={()=>downloadWord("내역서")} style={S.dlBtn}>📄 내역서 다운로드(.doc)</button>
         </div>
-        <p style={{fontSize:12,color:"#666",margin:"0 0 16px"}}>Word(.doc) 다운로드 후 편집하거나, 브라우저 인쇄(Ctrl+P)로 PDF 저장할 수 있습니다.</p>
-
-        <div style={{display:"flex",gap:0,borderBottom:"2px solid #1a4b8c",marginBottom:16,overflowX:"auto"}}>
-          {tabs.map((t,i)=><button key={i} onClick={()=>setDocTab(i)} style={docTab===i?S.tabActive:S.tab}>{t}</button>)}
-        </div>
-
-        {docTab===0&&(
-          <div style={S.doc}>
-            <div style={S.docH}>{tpLabel} 교습비등 [{mode==="기존삭제"?"신규":"변경"}]{type==="academy"?"등록신청서":"신고서"}</div>
-            <table style={S.docT}><tbody>
-              <tr><td style={S.dth} rowSpan={2}>신청인</td><td style={S.dth}>이름</td><td style={S.dtd}>{info.ownerName}</td><td style={S.dth}>생년월일</td><td style={S.dtd}>{info.birth}</td></tr>
-              <tr><td style={S.dth}>주소</td><td style={S.dtd} colSpan={3}>{info.addr||info.loc}</td></tr>
-              <tr><td style={S.dth} rowSpan={2}>신청내용</td><td style={S.dth}>{tpLabel}명</td><td style={S.dtd}>{info.nm}</td><td style={S.dth}>{type==="academy"?"등록번호":"신고번호"}</td><td style={S.dtd}>{info.reg}</td></tr>
-              <tr><td style={S.dth}>위치</td><td style={S.dtd} colSpan={3}>{info.loc}</td></tr>
-              <tr><td style={S.dth}>변경사유</td><td style={S.dtd} colSpan={4}>교습비 변경 ({mode})</td></tr>
-            </tbody></table>
-            <div style={{textAlign:"center",margin:"24px 0 8px",fontSize:13,lineHeight:1.8}}>
-              「학원의 설립·운영 및 과외교습에 관한 법률」 제{type==="academy"?"6":"14"}조에 따라<br/>위와 같이 {type==="academy"?"변경등록을 신청":"변경 신고를"} 합니다.
-            </div>
-            <div style={{textAlign:"center",fontSize:13,margin:"16px 0"}}>2026년 &nbsp;&nbsp;3월 &nbsp;&nbsp;20일</div>
-            <div style={{textAlign:"center",fontSize:13}}>신청인({type==="academy"?"학원설립·운영자":"교습자"}): {info.ownerName} &nbsp;(전자서명)</div>
-            <div style={{textAlign:"center",fontSize:13,marginTop:12,color:"#555"}}>{OFFICES.find(o=>o.id===office)?.name} 교육장 귀하</div>
-          </div>
-        )}
-
-        {docTab===1&&(
-          <div style={S.doc}>
-            <div style={S.docH}>교습비 등 내역서</div>
-            <div style={{fontSize:13,marginBottom:12}}>{tpLabel}명: {info.nm}</div>
-            {mode!=="일부수정"&&existingRows.length>0&&(
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:12,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",marginBottom:4}}>□ 기존 교습비 ({mode==="기존삭제"?"삭제":"유지"})</div>
-                <table style={S.docT}><thead><tr style={{background:"#e8e8e8"}}>
-                  <th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th><th style={S.dth2}>주총시간①</th><th style={S.dth2}>월총시간②</th><th style={S.dth2}>분당단가③</th><th style={S.dth2}>교습비④</th>
-                </tr></thead><tbody>
-                  {existingRows.map(r=>{const rc=calc(r);return(
-                    <tr key={r.id} style={{textDecoration:mode==="기존삭제"?"line-through":"none",color:mode==="기존삭제"?"#999":"#222"}}>
-                      <td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}</td>
-                      <td style={S.dtd2}>{r.mpd}×{r.dpw}</td><td style={S.dtd2}>{fmt(rc.mo)}</td><td style={S.dtd2}>{rc.pm.toFixed(2)}</td><td style={{...S.dtd2,fontWeight:700}}>{fmt(+r.fee)}</td>
-                    </tr>
-                  );})}
-                </tbody></table>
-              </div>
-            )}
-            <div style={{fontSize:12,fontWeight:700,color:"#1a4b8c",marginBottom:4}}>□ {mode==="일부수정"?"변경 내역":"신규 교습과정"}</div>
-            <div style={{overflowX:"auto"}}>
-              <table style={S.docT}><thead><tr style={{background:"#d4dde9"}}>
-                {mode==="일부수정"&&<th style={S.dth2}>구분</th>}
-                <th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th>
-                <th style={S.dth2}>주총교습시간①<br/><span style={{fontWeight:400,fontSize:10}}>(하루분×주회)</span></th>
-                <th style={S.dth2}>월총교습시간②<br/><span style={{fontWeight:400,fontSize:10}}>(①×{editRows[0]?.wpm||"4.2"}주)</span></th>
-                <th style={S.dth2}>분당단가③<br/><span style={{fontWeight:400,fontSize:10}}>(④÷②)</span></th>
-                <th style={S.dth2}>교습비④</th>
-              </tr></thead><tbody>
-                {editRows.map(r=>{const rc=calc(r);const isDel=r.tp==="삭제";return(
-                  <tr key={r.id} style={{textDecoration:isDel?"line-through":"none",color:isDel?"#999":"#222"}}>
-                    {mode==="일부수정"&&<td style={S.dtd2}>{r.tp}</td>}
-                    <td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}</td>
-                    <td style={S.dtd2}>{isDel?"-":`${r.mpd}×${r.dpw}`}</td>
-                    <td style={S.dtd2}>{isDel?"-":fmt(rc.mo)}</td>
-                    <td style={S.dtd2}>{isDel?"-":rc.pm.toFixed(2)}</td>
-                    <td style={{...S.dtd2,fontWeight:700}}>{isDel?"-":`${fmt(+r.fee)}원`}</td>
-                  </tr>
-                );})}
-              </tbody></table>
-            </div>
-          </div>
-        )}
-
-        {docTab===2&&(
-          <div style={S.doc}>
-            <div style={S.docH}>교습비등 게시표</div>
-            <div style={{fontSize:13,marginBottom:12}}>{tpLabel}명: {info.nm}&nbsp;&nbsp;|&nbsp;&nbsp;{type==="academy"?"등록번호":"신고번호"}: {info.reg}</div>
-            <table style={S.docT}><thead><tr style={{background:"#d4dde9"}}>
-              <th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th><th style={S.dth2}>교습비(월)</th>
-            </tr></thead><tbody>
-              {liveRows.map(r=>(
-                <tr key={r.id}><td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}명</td><td style={{...S.dtd2,fontWeight:700}}>{fmt(+r.fee)}원</td></tr>
-              ))}
-            </tbody></table>
-            <div style={{marginTop:16,fontSize:12,color:"#666",textAlign:"center"}}>게시일: 2026년 3월 20일</div>
-          </div>
-        )}
-
-        {docTab===3&&(
-          <div style={S.doc}>
-            <div style={S.docH}>교습비 반환기준</div>
-            <div style={{fontSize:12,color:"#666",marginBottom:12}}>학원의 설립·운영 및 과외교습에 관한 법률 시행령 [별표 4]</div>
-            <table style={S.docT}><thead><tr style={{background:"#d4dde9"}}><th style={S.dth2} colSpan={2}>구분</th><th style={S.dth2}>반환금액</th></tr></thead><tbody>
-              <tr><td style={S.dtd2} colSpan={2}>교습을 할 수 없거나 교습장소 제공 불가</td><td style={S.dtd2}>이미 납부한 교습비등의 전액</td></tr>
-              <tr><td style={S.dtd2} rowSpan={4}>교습기간<br/>1개월 이내</td><td style={S.dtd2}>교습 시작 전</td><td style={S.dtd2}>이미 납부한 교습비등의 전액</td></tr>
-              <tr><td style={S.dtd2}>총 교습시간의 1/3 경과 전</td><td style={S.dtd2}>이미 납부한 교습비등의 2/3 해당액</td></tr>
-              <tr><td style={S.dtd2}>총 교습시간의 1/2 경과 전</td><td style={S.dtd2}>이미 납부한 교습비등의 1/2 해당액</td></tr>
-              <tr><td style={S.dtd2}>총 교습시간의 1/2 경과 후</td><td style={S.dtd2}>반환하지 아니함</td></tr>
-              <tr><td style={S.dtd2} colSpan={2}>교습기간 1개월 초과</td><td style={S.dtd2}>반환사유 발생 해당 월의 반환대상 교습비(위 기준 준용) + 나머지 월의 교습비 전액</td></tr>
-            </tbody></table>
-            <div style={{marginTop:16,fontSize:12,color:"#666",textAlign:"center"}}>{tpLabel}명: {info.nm}</div>
-          </div>
-        )}
       </div>
-    );
+      <p style={{fontSize:12,color:"#666",margin:"0 0 16px"}}>Word(.doc) 다운로드 후 편집하거나, 브라우저 인쇄(Ctrl+P)로 PDF 저장할 수 있습니다.</p>
+      <div style={{display:"flex",gap:0,borderBottom:"2px solid #1a4b8c",marginBottom:16,overflowX:"auto"}}>
+        {tabs.map((t,i)=><button key={i} onClick={()=>setDocTab(i)} style={docTab===i?S.tabActive:S.tab}>{t}</button>)}
+      </div>
+      {docTab===0&&(<div style={S.doc}>
+        <div style={S.docH}>{tpLabel} 교습비등 [{mode==="기존삭제"?"신규":"변경"}]{type==="academy"?"등록신청서":"신고서"}</div>
+        <table style={S.docT}><tbody>
+          <tr><td style={S.dth} rowSpan={2}>신청인</td><td style={S.dth}>이름</td><td style={S.dtd}>{info.ownerName}</td><td style={S.dth}>생년월일</td><td style={S.dtd}>{info.birth}</td></tr>
+          <tr><td style={S.dth}>주소</td><td style={S.dtd} colSpan={3}>{info.addr||info.loc}</td></tr>
+          <tr><td style={S.dth} rowSpan={2}>신청내용</td><td style={S.dth}>{tpLabel}명</td><td style={S.dtd}>{info.nm}</td><td style={S.dth}>{type==="academy"?"등록번호":"신고번호"}</td><td style={S.dtd}>{info.reg}</td></tr>
+          <tr><td style={S.dth}>위치</td><td style={S.dtd} colSpan={3}>{info.loc}</td></tr>
+          <tr><td style={S.dth}>변경사유</td><td style={S.dtd} colSpan={4}>교습비 변경 ({mode})</td></tr>
+        </tbody></table>
+        <div style={{textAlign:"center",margin:"24px 0 8px",fontSize:13,lineHeight:1.8}}>「학원의 설립·운영 및 과외교습에 관한 법률」 제{type==="academy"?"6":"14"}조에 따라<br/>위와 같이 {type==="academy"?"변경등록을 신청":"변경 신고를"} 합니다.</div>
+        <div style={{textAlign:"center",fontSize:13,margin:"16px 0"}}>2026년 &nbsp;&nbsp;3월 &nbsp;&nbsp;20일</div>
+        <div style={{textAlign:"center",fontSize:13}}>신청인({type==="academy"?"학원설립·운영자":"교습자"}): {info.ownerName} &nbsp;(전자서명)</div>
+        <div style={{textAlign:"center",fontSize:13,marginTop:12,color:"#555"}}>{OFFICES.find(o=>o.id===office)?.name} 교육장 귀하</div>
+      </div>)}
+      {docTab===1&&(<div style={S.doc}>
+        <div style={S.docH}>교습비 등 내역서</div>
+        <div style={{fontSize:13,marginBottom:12}}>{tpLabel}명: {info.nm}</div>
+        {mode!=="일부수정"&&existingRows.length>0&&(<div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:mode==="기존삭제"?"#c0392b":"#555",marginBottom:4}}>□ 기존 교습비 ({mode==="기존삭제"?"삭제":"유지"})</div>
+          <table style={S.docT}><thead><tr style={{background:"#e8e8e8"}}><th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th><th style={S.dth2}>주총시간①</th><th style={S.dth2}>월총시간②</th><th style={S.dth2}>분당단가③</th><th style={S.dth2}>교습비④</th></tr></thead><tbody>
+            {existingRows.map(r=>{const rc=calc(r);return(<tr key={r.id} style={{textDecoration:mode==="기존삭제"?"line-through":"none",color:mode==="기존삭제"?"#999":"#222"}}>
+              <td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}</td>
+              <td style={S.dtd2}>{r.mpd}×{r.dpw}</td><td style={S.dtd2}>{fmt(rc.mo)}</td><td style={S.dtd2}>{rc.pm.toFixed(2)}</td><td style={{...S.dtd2,fontWeight:700}}>{fmt(+r.fee)}</td>
+            </tr>);})}
+          </tbody></table>
+        </div>)}
+        <div style={{fontSize:12,fontWeight:700,color:"#1a4b8c",marginBottom:4}}>□ {mode==="일부수정"?"변경 내역":"신규 교습과정"}</div>
+        <div style={{overflowX:"auto"}}><table style={S.docT}><thead><tr style={{background:"#d4dde9"}}>
+          {mode==="일부수정"&&<th style={S.dth2}>구분</th>}
+          <th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th>
+          <th style={S.dth2}>주총교습시간①</th><th style={S.dth2}>월총교습시간②</th><th style={S.dth2}>분당단가③</th><th style={S.dth2}>교습비④</th>
+        </tr></thead><tbody>
+          {editRows.map(r=>{const rc=calc(r);const isDel=r.tp==="삭제";return(<tr key={r.id} style={{textDecoration:isDel?"line-through":"none",color:isDel?"#999":"#222"}}>
+            {mode==="일부수정"&&<td style={S.dtd2}>{r.tp}</td>}
+            <td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}</td>
+            <td style={S.dtd2}>{isDel?"-":`${r.mpd}×${r.dpw}`}</td><td style={S.dtd2}>{isDel?"-":fmt(rc.mo)}</td>
+            <td style={S.dtd2}>{isDel?"-":rc.pm.toFixed(2)}</td><td style={{...S.dtd2,fontWeight:700}}>{isDel?"-":`${fmt(+r.fee)}원`}</td>
+          </tr>);})}
+        </tbody></table></div>
+      </div>)}
+      {docTab===2&&(<div style={S.doc}>
+        <div style={S.docH}>교습비등 게시표</div>
+        <div style={{fontSize:13,marginBottom:12}}>{tpLabel}명: {info.nm}&nbsp;&nbsp;|&nbsp;&nbsp;{type==="academy"?"등록번호":"신고번호"}: {info.reg}</div>
+        <table style={S.docT}><thead><tr style={{background:"#d4dde9"}}><th style={S.dth2}>교습과정</th><th style={S.dth2}>교습과목</th><th style={S.dth2}>교습대상</th><th style={S.dth2}>정원</th><th style={S.dth2}>교습비(월)</th></tr></thead><tbody>
+          {liveRows.map(r=>(<tr key={r.id}><td style={S.dtd2}>{r.p}</td><td style={S.dtd2}>{r.nm}</td><td style={S.dtd2}>{r.d}</td><td style={S.dtd2}>{r.cap}명</td><td style={{...S.dtd2,fontWeight:700}}>{fmt(+r.fee)}원</td></tr>))}
+        </tbody></table>
+        <div style={{marginTop:16,fontSize:12,color:"#666",textAlign:"center"}}>게시일: 2026년 3월 20일</div>
+      </div>)}
+      {docTab===3&&(<div style={S.doc}>
+        <div style={S.docH}>교습비 반환기준</div>
+        <div style={{fontSize:12,color:"#666",marginBottom:12}}>학원의 설립·운영 및 과외교습에 관한 법률 시행령 [별표 4]</div>
+        <table style={S.docT}><thead><tr style={{background:"#d4dde9"}}><th style={S.dth2} colSpan={2}>구분</th><th style={S.dth2}>반환금액</th></tr></thead><tbody>
+          <tr><td style={S.dtd2} colSpan={2}>교습을 할 수 없거나 교습장소 제공 불가</td><td style={S.dtd2}>이미 납부한 교습비등의 전액</td></tr>
+          <tr><td style={S.dtd2} rowSpan={4}>교습기간<br/>1개월 이내</td><td style={S.dtd2}>교습 시작 전</td><td style={S.dtd2}>이미 납부한 교습비등의 전액</td></tr>
+          <tr><td style={S.dtd2}>총 교습시간의 1/3 경과 전</td><td style={S.dtd2}>이미 납부한 교습비등의 2/3 해당액</td></tr>
+          <tr><td style={S.dtd2}>총 교습시간의 1/2 경과 전</td><td style={S.dtd2}>이미 납부한 교습비등의 1/2 해당액</td></tr>
+          <tr><td style={S.dtd2}>총 교습시간의 1/2 경과 후</td><td style={S.dtd2}>반환하지 아니함</td></tr>
+          <tr><td style={S.dtd2} colSpan={2}>교습기간 1개월 초과</td><td style={S.dtd2}>반환사유 발생 해당 월의 반환대상 교습비(위 기준 준용) + 나머지 월의 교습비 전액</td></tr>
+        </tbody></table>
+        <div style={{marginTop:16,fontSize:12,color:"#666",textAlign:"center"}}>{tpLabel}명: {info.nm}</div>
+      </div>)}
+    </div>);
   };
 
   const stepContent=[renderStep0,renderStep1,renderStep2,renderStep3,renderStep4,renderStep5];
 
-  return(
-    <div style={S.wrap}>
-      <style>{`
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{background:#eef1f6}
-        select:focus,input:focus{outline:none;border-color:#1a4b8c;box-shadow:0 0 0 2px rgba(26,75,140,.15)}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-        ::-webkit-scrollbar{height:6px}::-webkit-scrollbar-thumb{background:#bbb;border-radius:3px}
-      `}</style>
-
-      <div style={S.header}>
-        <div style={S.headerInner}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={S.logo}>NEIS</div>
-            <div>
-              <div style={{fontSize:11,opacity:.7}}>나이스 대국민서비스</div>
-              <div style={{fontSize:16,fontWeight:700,letterSpacing:1}}>학원·교습소 교습비 온라인 변경 신청</div>
-            </div>
-          </div>
-          <div style={{fontSize:11,opacity:.6}}>프로토타입 시연 데모 v2.0</div>
-        </div>
+  return(<div style={S.wrap}>
+    <style>{`*{box-sizing:border-box;margin:0;padding:0}body{background:#eef1f6}
+      select:focus,input:focus{outline:none;border-color:#1a4b8c;box-shadow:0 0 0 2px rgba(26,75,140,.15)}
+      @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+      ::-webkit-scrollbar{height:6px}::-webkit-scrollbar-thumb{background:#bbb;border-radius:3px}`}</style>
+    <div style={S.header}><div style={S.headerInner}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <div style={S.logo}>NEIS</div>
+        <div><div style={{fontSize:11,opacity:.7}}>나이스 대국민서비스</div><div style={{fontSize:16,fontWeight:700,letterSpacing:1}}>학원·교습소 교습비 온라인 변경 신청</div></div>
       </div>
-
-      <div style={S.stepBar}>
-        <div style={S.stepInner}>
-          {STEPS.map((s,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:0}}>
-              <div onClick={()=>{if(i<step){setStep(i);setSubmitted(false);}}} style={{display:"flex",alignItems:"center",gap:6,cursor:i<step?"pointer":"default"}}>
-                <div style={i===step?S.scActive:i<step?S.scDone:S.sc}>{i<step?"✓":i+1}</div>
-                <span style={{fontSize:12,color:i===step?"#1a4b8c":i<step?"#27ae60":"#999",fontWeight:i===step?700:400,whiteSpace:"nowrap"}}>{s}</span>
-              </div>
-              {i<STEPS.length-1&&<div style={{width:24,height:1,background:i<step?"#27ae60":"#ccc",margin:"0 4px"}}/>}
-            </div>
-          ))}
+      <div style={{fontSize:11,opacity:.6}}>프로토타입 시연 데모 v3.0</div>
+    </div></div>
+    <div style={S.stepBar}><div style={S.stepInner}>
+      {STEPS.map((s,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:0}}>
+        <div onClick={()=>{if(i<step){setStep(i);setSubmitted(false);}}} style={{display:"flex",alignItems:"center",gap:6,cursor:i<step?"pointer":"default"}}>
+          <div style={i===step?S.scActive:i<step?S.scDone:S.sc}>{i<step?"✓":i+1}</div>
+          <span style={{fontSize:12,color:i===step?"#1a4b8c":i<step?"#27ae60":"#999",fontWeight:i===step?700:400,whiteSpace:"nowrap"}}>{s}</span>
         </div>
-      </div>
-
-      <div style={S.content}>
-        <div style={{animation:"fadeIn .3s ease"}} key={step}>{stepContent[step]()}</div>
-      </div>
-
-      {!(step===4&&submitted)&&(
-        <div style={S.navBar}>
-          <div style={S.navInner}>
-            {step>0&&step<5&&<button onClick={()=>{setStep(step-1);setSubmitted(false);}} style={S.backBtn}>← 이전</button>}
-            <div style={{flex:1}}/>
-            {step<5&&step!==4&&<button disabled={!canNext()} onClick={()=>setStep(step+1)} style={canNext()?S.primaryBtn:S.primaryBtnOff}>다음 →</button>}
-            {step===5&&<button onClick={()=>{setStep(0);setSubmitted(false);setSigned(false);setEditRows([blankRow(1)]);setExistingRows([]);setInfo({});}} style={S.backBtn}>처음으로</button>}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+        {i<STEPS.length-1&&<div style={{width:24,height:1,background:i<step?"#27ae60":"#ccc",margin:"0 4px"}}/>}
+      </div>))}
+    </div></div>
+    <div style={S.content}><div style={{animation:"fadeIn .3s ease"}} key={step}>{stepContent[step]()}</div></div>
+    {!(step===4&&submitted)&&(<div style={S.navBar}><div style={S.navInner}>
+      {step>0&&step<5&&<button onClick={()=>{setStep(step-1);setSubmitted(false);}} style={S.backBtn}>← 이전</button>}
+      <div style={{flex:1}}/>
+      {step<5&&step!==4&&<button disabled={!canNext()} onClick={()=>setStep(step+1)} style={canNext()?S.primaryBtn:S.primaryBtnOff}>다음 →</button>}
+      {step===5&&<button onClick={()=>{setStep(0);setSubmitted(false);setSigned(false);setEditRows([blankRow(1)]);setExistingRows([]);setInfo({});setCourseType("");}} style={S.backBtn}>처음으로</button>}
+    </div></div>)}
+  </div>);
 }
 
 const S={
@@ -719,8 +730,7 @@ const S={
   card:{background:"#fff",borderRadius:8,border:"1px solid #d4dde9",padding:"24px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,.06)"},
   cardTitle:{fontSize:17,fontWeight:700,color:"#1a4b8c",marginBottom:16,paddingBottom:10,borderBottom:"2px solid #1a4b8c"},
   grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px 20px"},
-  fg:{marginBottom:12},
-  label:{display:"block",fontSize:13,fontWeight:600,color:"#444",marginBottom:4},
+  fg:{marginBottom:12},label:{display:"block",fontSize:13,fontWeight:600,color:"#444",marginBottom:4},
   sel:{width:"100%",padding:"8px 10px",border:"1px solid #c5d0de",borderRadius:4,fontSize:13,background:"#fff"},
   inp:{width:"100%",padding:"8px 10px",border:"1px solid #c5d0de",borderRadius:4,fontSize:13,background:"#fff"},
   hint:{fontSize:12,color:"#27ae60",marginTop:6},
